@@ -13,6 +13,15 @@ search:
     - '"business intelligence" RFP Oregon'
     - '"Microsoft partner" subcontractor Power BI'
     - '"MSP" subcontractor .NET Oregon'
+    - '"AI infrastructure" consultant remote'
+    - '"HPC" research software engineer Oregon'
+    - '"HPC" research software engineer California'
+    - '"GPU infrastructure" engineer remote'
+    - '"private AI" consultant on-prem LLM'
+    - '"LLM fine tuning" consultant contract'
+    - '"LoRA" OR "QLoRA" consultant contract'
+    - '"RAG" consultant contract remote'
+    - '"model evaluation" LLM consultant'
 
 profile:
   skills:
@@ -31,11 +40,20 @@ profile:
     - REST APIs
     - business analysis
     - AI automation
+    - Python
+    - Docker
+    - Linux
+    - Ollama
+    - local LLMs
+    - model evaluation
   preferred:
     remote: true
     contract_or_1099: true
     oregon_public_sector: true
+    california: true
     subcontracting: true
+    ai_infrastructure: true
+    research_software: true
   avoid:
     - commission-only
     - unpaid trial
@@ -69,42 +87,33 @@ models:
   consensus:
     # median | mean | trimmed_mean
     strategy: median
-    # Require this many successful model responses before model consensus is used.
     min_reviewers: 2
-    # If true, use per-model reliability weights below during consensus aggregation.
     use_model_weights: false
-    # Optional model reliability map; only used when use_model_weights=true.
-    # Higher values increase that model's influence.
     model_weights:
       qwen3:14b: 1.0
       deepseek-r1:14b: 1.0
-    # Only used when strategy = trimmed_mean.
     trim_ratio: 0.2
     disagreement_penalty:
       enabled: true
-      # If stddev for a signal is above this, that signal counts as high disagreement.
       stddev_threshold: 2.0
-      # Max points deducted from final opportunity score.
       max_penalty_points: 10
+    evidence_penalty:
+      enabled: true
+      # Reviewers must quote page text verbatim. Poor quote verification reduces the score.
+      min_verification_ratio: 0.6
+      max_penalty_points: 8
     auto_calibration:
       enabled: false
-      # Relative to project root.
       history_file: "output/opportunities.json"
-      # Compare model scores against this baseline key from history rows.
-      # Options: deterministic_scores, final_scores
+      # This remains a provisional baseline. Prefer real outcome data before enabling
+      # calibration aggressively.
       target: "deterministic_scores"
-      # Minimum historical review samples required per model.
       min_samples_per_model: 8
-      # Clamp bounds for generated model weights.
       min_weight: 0.6
       max_weight: 1.6
-      # Smooth generated weights toward neutral (1.0).
       smooth_to: 1.0
-      # 0=no adjustment, 1=full adjustment.
       alpha: 0.5
-      # If true, suggested weights are merged into runtime consensus weights.
       apply_to_runtime: true
-      # Optional artifact with generated suggestions/diagnostics.
       write_suggestions_file: "output/model_weights.suggested.json"
 
 safety:
