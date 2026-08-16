@@ -1,0 +1,114 @@
+search:
+  max_results_per_query: 8
+  queries:
+    - '"Power BI" remote contract'
+    - '"SSRS" remote contract'
+    - '"SQL reporting" remote contract'
+    - '"Entra ID" SSO contract remote'
+    - '"Azure AD" SSO contractor'
+    - '".NET" contract remote'
+    - '"AI automation" consultant remote'
+    - '"automation consultant" subcontractor'
+    - '"Power BI" RFP Oregon'
+    - '"business intelligence" RFP Oregon'
+    - '"Microsoft partner" subcontractor Power BI'
+    - '"MSP" subcontractor .NET Oregon'
+
+profile:
+  skills:
+    - Power BI
+    - SSRS
+    - SQL Server
+    - Crystal Reports
+    - C#
+    - .NET
+    - ASP.NET
+    - Azure
+    - Microsoft Entra ID
+    - SAML
+    - OAuth2
+    - OpenID Connect
+    - REST APIs
+    - business analysis
+    - AI automation
+  preferred:
+    remote: true
+    contract_or_1099: true
+    oregon_public_sector: true
+    subcontracting: true
+  avoid:
+    - commission-only
+    - unpaid trial
+    - MLM
+    - crypto trading
+    - gambling
+
+scoring:
+  weights:
+    buyer_intent: 2.0
+    revenue_potential: 1.5
+    skill_fit: 2.0
+    visible_pain: 1.2
+    urgency: 1.2
+    decision_maker_access: 0.8
+    time_to_first_dollar: 1.6
+    acquisition_friction: 1.5
+    competition: 0.7
+    reality_confidence: 2.0
+
+  minimum_score_to_surface: 62
+
+models:
+  enabled: true
+  ollama_url: "http://localhost:11434"
+  reviewers:
+    # Replace these with models you actually have installed.
+    - "qwen3:14b"
+    - "deepseek-r1:14b"
+  timeout_seconds: 90
+  consensus:
+    # median | mean | trimmed_mean
+    strategy: median
+    # Require this many successful model responses before model consensus is used.
+    min_reviewers: 2
+    # If true, use per-model reliability weights below during consensus aggregation.
+    use_model_weights: false
+    # Optional model reliability map; only used when use_model_weights=true.
+    # Higher values increase that model's influence.
+    model_weights:
+      qwen3:14b: 1.0
+      deepseek-r1:14b: 1.0
+    # Only used when strategy = trimmed_mean.
+    trim_ratio: 0.2
+    disagreement_penalty:
+      enabled: true
+      # If stddev for a signal is above this, that signal counts as high disagreement.
+      stddev_threshold: 2.0
+      # Max points deducted from final opportunity score.
+      max_penalty_points: 10
+    auto_calibration:
+      enabled: false
+      # Relative to project root.
+      history_file: "output/opportunities.json"
+      # Compare model scores against this baseline key from history rows.
+      # Options: deterministic_scores, final_scores
+      target: "deterministic_scores"
+      # Minimum historical review samples required per model.
+      min_samples_per_model: 8
+      # Clamp bounds for generated model weights.
+      min_weight: 0.6
+      max_weight: 1.6
+      # Smooth generated weights toward neutral (1.0).
+      smooth_to: 1.0
+      # 0=no adjustment, 1=full adjustment.
+      alpha: 0.5
+      # If true, suggested weights are merged into runtime consensus weights.
+      apply_to_runtime: true
+      # Optional artifact with generated suggestions/diagnostics.
+      write_suggestions_file: "output/model_weights.suggested.json"
+
+safety:
+  never_contact_people: true
+  never_apply_automatically: true
+  never_spend_money: true
+  never_create_accounts: true
