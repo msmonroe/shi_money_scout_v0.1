@@ -1,3 +1,4 @@
+import json
 from collections import Counter
 from statistics import median, pstdev
 
@@ -34,15 +35,29 @@ def _norm_verdict(raw):
     return ""
 
 
+def _dedupe_evidence(items):
+    seen = set()
+    out = []
+    for item in items:
+        if isinstance(item, dict):
+            key = json.dumps(item, sort_keys=True)
+        else:
+            key = str(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
 class ConsensusAgent:
     def __init__(self, config=None):
         cfg = config or {}
         self.strategy = str(cfg.get("strategy", "median")).strip().lower()
-        self.min_reviewers = int(cfg.get("min_reviewers", 1))
-        self.min_reviewers = max(1, self.min_reviewers)
-        self.trim_ratio = float(cfg.get("trim_ratio", 0.2))
-        self.trim_ratio = _clamp(self.trim_ratio, 0.0, 0.45)
+        self.min_reviewers = max(1, int(cfg.get("min_reviewers", 1)))
+        self.trim_ratio = _clamp(float(cfg.get("trim_ratio", 0.2)), 0.0, 0.45)
         self.disagreement_penalty = cfg.get("disagreement_penalty", {}) or {}
+        self.evidence_penalty = cfg.get("evidence_penalty", {}) or {}
         self.use_model_weights = bool(cfg.get("use_model_weights", False))
         self.model_weights = cfg.get("model_weights", {}) or {}
 
@@ -117,6 +132,7 @@ class ConsensusAgent:
                 "verdict_counts": {},
                 "majority_verdict": "",
                 "disagreement": {},
+                "evidence_quality": {},
                 "score_penalty": 0.0,
                 "errors": [str(x.get("_error")) for x in bad if x.get("_error")],
             }
@@ -135,12 +151,17 @@ class ConsensusAgent:
         flaws = []
         evidence = []
         verdicts = []
+        verification_ratios = []
         for r in good:
             flaws.extend(r.get("fatal_flaws", []) or [])
             evidence.extend(r.get("evidence", []) or [])
             verdict = _norm_verdict(r.get("verdict"))
             if verdict:
                 verdicts.append(verdict)
+            try:
+                verification_ratios.append(float(r.get("evidence_verification_ratio", 0.0)))
+            except Exception:
+                pass
 
         verdict_counts = dict(Counter(verdicts))
         majority_verdict = ""
@@ -151,6 +172,12 @@ class ConsensusAgent:
             "stddev_by_signal": self._stddev_by_key(good),
             "verdict_fragmentation": round(len(verdict_counts) / 3.0, 3) if verdict_counts else 0.0,
         }
+        evidence_quality = {
+            "mean_verification_ratio": round(sum(verification_ratios) / len(verification_ratios), 3)
+            if verification_ratios else 0.0,
+            "verified_items": sum(int(r.get("evidence_verified_count", 0) or 0) for r in good),
+            "submitted_items": sum(int(r.get("evidence_total_count", 0) or 0) for r in good),
+        }
 
         score_penalty = 0.0
         if self.disagreement_penalty.get("enabled", True):
@@ -159,18 +186,27 @@ class ConsensusAgent:
             high_var = [v for v in disagreement["stddev_by_signal"].values() if v >= stddev_threshold]
             if high_var:
                 scale = min(1.0, len(high_var) / max(1, len(NUMERIC_KEYS) // 2))
-                score_penalty = round(max_penalty * scale, 2)
+                score_penalty += max_penalty * scale
+
+        if self.evidence_penalty.get("enabled", True) and evidence_quality["submitted_items"]:
+            min_ratio = float(self.evidence_penalty.get("min_verification_ratio", 0.6))
+            max_penalty = float(self.evidence_penalty.get("max_penalty_points", 8.0))
+            ratio = evidence_quality["mean_verification_ratio"]
+            if ratio < min_ratio:
+                deficit = (min_ratio - ratio) / max(min_ratio, 0.001)
+                score_penalty += max_penalty * min(1.0, deficit)
 
         return {
             "available": True,
             "scores": scores,
             "fatal_flaws": sorted(set(map(str, flaws))),
-            "evidence": sorted(set(map(str, evidence)))[:12],
+            "evidence": _dedupe_evidence(evidence)[:12],
             "verdicts": verdicts,
             "verdict_counts": verdict_counts,
             "majority_verdict": majority_verdict,
             "disagreement": disagreement,
-            "score_penalty": score_penalty,
+            "evidence_quality": evidence_quality,
+            "score_penalty": round(score_penalty, 2),
             "model_weights_used": {
                 str(r.get("_model", "unknown")): self._weight_for(r) for r in good
             } if self.use_model_weights else {},
@@ -179,5 +215,4 @@ class ConsensusAgent:
 
 
 def combine_reviews(reviews, config=None):
-    """Backward-compatible helper for legacy callers."""
     return ConsensusAgent(config=config).combine(reviews)
