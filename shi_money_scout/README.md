@@ -6,7 +6,11 @@ A small opportunity-finding agent designed to answer one question:
 
 Shi Money Scout searches the web, extracts evidence, asks multiple local Ollama models for independent assessments, then applies a deterministic scoring layer. Models do **not** get to certify their own work.
 
-Consensus is handled by a dedicated consensus agent that can enforce a reviewer quorum and apply disagreement penalties when models diverge too much.
+The current design has three important safeguards:
+
+1. deterministic page evidence remains the primary scoring signal
+2. model reviewers must provide verbatim evidence quotes that are checked against fetched page text
+3. real-world outcomes can be recorded so future calibration can move toward actual response/interview/revenue data instead of self-referential model scores
 
 ## What it scores
 
@@ -46,18 +50,22 @@ Candidate URLs
   ↓
 Page extraction
   ↓
-Evidence record
+Deterministic evidence record
   ↓
 ┌─────────────────────────────┐
 │ Independent model reviewers │
 │  Reviewer A / B / C         │
 └─────────────┬───────────────┘
               ↓
+      Quote verification
+              ↓
        Consensus summary
               ↓
      Deterministic scorer
               ↓
        Ranked opportunities
+              ↓
+       Real-world outcome
 ```
 
 ## Quick start
@@ -73,6 +81,27 @@ cp config.example.yaml config.yaml
 python main.py
 ```
 
+Run the built-in tests with:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+## Evidence verification
+
+The reviewer schema now requires evidence like:
+
+```json
+{
+  "claim": "The role is a 12 month contract",
+  "quote": "12 month contract"
+}
+```
+
+`quote` must occur in the fetched page text. Shi verifies the quote deterministically and removes unverified evidence before consensus. A configurable evidence-quality penalty lowers the final score when reviewers repeatedly provide unsupported evidence.
+
+This is intentionally designed to catch the dangerous failure mode where an LLM invents a convincing fact, citation, salary, deadline, or requirement.
+
 ## Consensus Agent (multi-model)
 
 Consensus settings live in `config.yaml` under `models.consensus`.
@@ -80,33 +109,54 @@ Consensus settings live in `config.yaml` under `models.consensus`.
 - `strategy`: `median` (default), `mean`, or `trimmed_mean`
 - `min_reviewers`: minimum number of successful model reviews required
 - `use_model_weights`: enable reviewer reliability weighting
-- `model_weights`: per-model influence factors (example: stronger reviewer gets `1.3`, weaker gets `0.8`)
+- `model_weights`: per-model influence factors
 - `trim_ratio`: used by `trimmed_mean` to drop outlier extremes
-- `disagreement_penalty.enabled`: whether disagreement should reduce final score
-- `disagreement_penalty.stddev_threshold`: per-signal std-dev level considered high disagreement
-- `disagreement_penalty.max_penalty_points`: cap on score reduction from disagreement
+- `disagreement_penalty.*`: reduces score when reviewers disagree heavily
+- `evidence_penalty.*`: reduces score when reviewer quotes cannot be verified
 - `auto_calibration.*`: optional automatic model-weight tuning from historical run data
 
-This creates a practical committee behavior:
-
-- deterministic signals remain primary
-- model consensus contributes secondary signal shaping
-- reliability-weighted reviewers can influence consensus proportionally
-- high model disagreement lowers confidence and reduces rank
+Deterministic signals remain primary. Model consensus shapes the result but does not control it.
 
 ### Auto-calibration
 
-If `models.consensus.auto_calibration.enabled` is true, Shi will:
+The existing auto-calibration system can compare reviewers with a historical baseline and adjust reviewer weights. Its default target is still `deterministic_scores`.
 
-1. load prior opportunities from `history_file` (default: `output/opportunities.json`)
-2. compute each model's historical average error against a target baseline (`deterministic_scores` by default)
-3. convert lower error into higher weight, normalize around the median reviewer, clamp/smooth the result
-4. optionally apply those weights at runtime (`apply_to_runtime: true`)
-5. write diagnostics and suggested weights to `write_suggestions_file`
+Treat that target as provisional. The stronger long-term direction is calibration against **real outcomes**, not against Shi's own heuristics.
 
-This gives you a lightweight feedback loop where better historical agreement gradually increases reviewer influence.
+## Real-world outcome tracking
 
-By default the search layer uses `ddgs` for web discovery and does not require a paid API key.
+Every opportunity now gets a stable `opportunity_id`, and Shi reads optional history from:
+
+```text
+output/outcomes.json
+```
+
+Record what actually happened with:
+
+```bash
+python record_outcome.py "https://example.com/opportunity" pursued
+python record_outcome.py "https://example.com/opportunity" response
+python record_outcome.py "https://example.com/opportunity" interview
+python record_outcome.py "https://example.com/opportunity" proposal
+python record_outcome.py "https://example.com/opportunity" offer --amount 120000
+python record_outcome.py "https://example.com/opportunity" paid --amount 5000 --notes "first invoice paid"
+```
+
+Supported stages are:
+
+- surfaced
+- pursued
+- response
+- interview
+- proposal
+- offer
+- paid
+- rejected
+- ignored
+
+The point is to build the dataset needed for a future ranking model that can answer a much more useful question:
+
+> "Which characteristics actually led to responses, interviews, offers, and money?"
 
 ## Output
 
@@ -114,10 +164,8 @@ Results are written to:
 
 - `output/opportunities.json`
 - `output/report.md`
-
-Live run status is also written to:
-
 - `output/status.json`
+- `output/outcomes.json` when outcome tracking is used
 
 To watch progress and ETA in real-time:
 
@@ -131,8 +179,6 @@ Optional arguments:
 ./watch_status.sh output/status.json 1
 ```
 
-That is: `status-file-path` then refresh interval in seconds.
-
 ## Important
 
-This is a lead-ranking/research tool, not a financial adviser. It does not spend money, contact prospects, submit applications, or enter contracts. Those actions should stay human-approved.
+This is a lead-ranking/research tool, not a financial adviser. It does not spend money, contact prospects, submit applications, or enter contracts. Those actions stay human-approved.
