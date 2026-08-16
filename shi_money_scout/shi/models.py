@@ -4,7 +4,7 @@ import requests
 
 SYSTEM = """You are one reviewer in an opportunity-screening committee.
 Evaluate only the evidence supplied. Do not invent facts, companies, compensation,
-deadlines, contacts, or requirements.
+deadlines, contacts, requirements, or source text.
 
 Return ONLY valid JSON with this schema:
 {
@@ -19,13 +19,23 @@ Return ONLY valid JSON with this schema:
   "competition": 0-10,
   "reality_confidence": 0-10,
   "fatal_flaws": ["..."],
-  "evidence": ["short evidence snippets from supplied text only"],
+  "evidence": [
+    {"claim": "short claim", "quote": "verbatim quote copied from page_text"}
+  ],
   "verdict": "pursue|maybe|reject"
 }
+
+Evidence rules:
+- Every evidence.quote MUST be copied verbatim from page_text.
+- Do not cite the search snippet as evidence unless the same text appears in page_text.
+- If page_text does not support a claim, lower confidence instead of inventing support.
+- If page_text is empty or looks unrelated to the opportunity, reality_confidence must be low.
+- Prefer a few strong evidence items over many weak ones.
 
 For acquisition_friction, a HIGH score means LOW friction/easier acquisition.
 For competition, a HIGH score means MORE favorable/lower competitive difficulty.
 """
+
 
 def _extract_json(text):
     try:
@@ -36,10 +46,20 @@ def _extract_json(text):
             return json.loads(m.group(0))
         raise
 
-def review_with_ollama(model, candidate, text, profile, ollama_url, timeout=90):
+
+def review_with_ollama(
+    model,
+    candidate,
+    text,
+    profile,
+    ollama_url,
+    timeout=90,
+    extracted_evidence=None,
+):
     prompt = {
         "opportunity": candidate,
         "profile": profile,
+        "deterministic_evidence": extracted_evidence or {},
         "page_text": text[:12000],
     }
     payload = {
